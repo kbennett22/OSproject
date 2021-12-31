@@ -446,7 +446,7 @@ setup_stack (void **esp, char **argv, char *file_name)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
-        *esp = PHYS_BASE-12;
+        *esp = PHYS_BASE;
       } else
         palloc_free_page (kpage);
     }
@@ -457,7 +457,22 @@ setup_stack (void **esp, char **argv, char *file_name)
   int argc = 0;
   /*save all arguments to argv*   */
   char *argptr;
-  char * token;
+  char *token;
+
+  argv[0] = strtok_r((char*)file_name, " ", &argptr);
+
+  for(token = (char*)file_name; token != NULL; token = strtok_r(NULL, " ", &argptr))
+  {
+   argv[argc] = token;
+   argc++;
+  }
+
+  /*Write the argument in reverse order */
+  for (i = argc;i >=0; i--)
+  {
+	  *esp -= sizeof(char *);
+	  memcpy(*esp, &arg[i], sizeof(char *));
+  }
 
   
   return success;
