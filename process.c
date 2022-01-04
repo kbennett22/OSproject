@@ -38,7 +38,8 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-  name = strtok_r((char*)file_name, " ", &argptr);
+  char *arg_name;
+  arg_name = strtok_r((char*)file_name, " ", &argptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
 
@@ -203,7 +204,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp, char **argv, char *file_name);
+static bool setup_stack (void **esp, char **argv, const char *file_name);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -436,7 +437,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, char **argv, char *file_name) 
+setup_stack (void **esp, char **argv, const char *file_name) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -452,13 +453,13 @@ setup_stack (void **esp, char **argv, char *file_name)
     }
 
   /* my implement for argument passing */
-  char *argv[50];
+  
   int i;
   int argc = 0;
   /*save all arguments to argv*   */
   char *argptr;
   char *token;
-
+  char *arg_addr;
   argv[0] = strtok_r((char*)file_name, " ", &argptr);
 
   for(token = (char*)file_name; token != NULL; token = strtok_r(NULL, " ", &argptr))
@@ -471,11 +472,27 @@ setup_stack (void **esp, char **argv, char *file_name)
   for (i = argc;i >=0; i--)
   {
 	  *esp -= sizeof(char *);
-	  memcpy(*esp, &arg[i], sizeof(char *));
+	  memcpy(*esp, argv[i], strlen(argv[i])+1);
+	  
+  }
+
+  /*word-alignment  */
+
+  int align = *esp % 4;
+  *esp -=align;
+  memset (*esp, 0, align);
+  return success;
+
+  /*writing each arguments address   */
+  for (i =argc;i >=0; i--)
+  {
+	  *esp -=4;
+	  arg_addr = argv[i];
+	  memcpy (*esp, arg_addr, 4);
+
   }
 
   
-  return success;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
