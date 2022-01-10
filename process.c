@@ -231,12 +231,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
    char *argptr;
 
    argv[0] = strtok_r((char*)file_name, " ", &argptr);
-
    char *token;
-   for(token = (char *)file_name; token != NULL; token = strtok_r(NULL, " ", &argptr))
-   {
+   /*Tokenize the arguments*/
+   token = (char*)file_name;
+   while (token != NULL) {
    argv[argc] = token;
    argc++;
+   
+   token = strtok_r(NULL, " ", &argptr);
+
    }
 
   /* Allocate and activate page directory. */
@@ -464,7 +467,10 @@ setup_stack (void **esp,  char **argv, int argc)
       if (success) {
         *esp = PHYS_BASE;
 
-uint32_t *arr[argc]; 
+   
+
+	
+      uint32_t *arr[argc]; 
       for (int i = argc-1; i > 0; i--){
         *esp -= (strlen(argv[i])+1)*sizeof(char);
         arr[i] = (int*)*esp; 
