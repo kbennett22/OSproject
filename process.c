@@ -38,8 +38,8 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-  char *arg_name;
-  arg_name = strtok_r((char*)file_name, " ", &argptr);
+  
+  file_name = strtok_r((char*)file_name, " ", &argptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
 
@@ -204,7 +204,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp, char **argv, const char *file_name);
+static bool setup_stack (void **esp, char **argv, int argc);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -223,6 +223,21 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+   /*argument passing        */
+   char *argv[100];
+
+   int argc = 1;
+
+   char *argptr;
+
+   argv[0] = strtok_r((char*)file_name, " ", &argptr);
+
+   char *token;
+   for(token = (char *)file_name; token != NULL; token = strtok_r(NULL, " ", &argptr))
+   {
+   argv[argc] = token;
+   argc++;
+   }
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -230,8 +245,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  /* Open executable file. */
-  file = filesys_open (file_name);
+  /* Open the copied file. */
+  file = filesys_open (argv[0]);
 
   if (file == NULL) 
     {
@@ -312,7 +327,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp, argv, file_name))
+  if (!setup_stack (esp, argv, argc))
     goto done;
 
   /* Start address. */
@@ -437,62 +452,66 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, char **argv, const char *file_name) 
+setup_stack (void **esp,  char **argv, int argc) 
 {
   uint8_t *kpage;
   bool success = false;
-
+  
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
         *esp = PHYS_BASE;
+
+uint32_t *arr[argc]; 
+      for (int i = argc-1; i > 0; i--){
+        *esp -= (strlen(argv[i])+1)*sizeof(char);
+        arr[i] = (int*)*esp; 
+        memcpy(*esp,argv[i],strlen(argv[i])+1);
+      } 
+      
+      *esp -= 4;
+      (*(int *)(*esp)) = 0;//sentinel
+
+      for (int i = argc-1; i > 0; i--){
+        *esp -= 4;//32bit
+        (*(uint32_t **)(*esp)) = arr[i];
+      }
+
+      *esp -= 4;
+      (*(uintptr_t **)(*esp)) = (*esp+4);
+      *esp -= 4;
+      *(int *)(*esp) = argc;
+      *esp -= 4;
+      (*(int *)(*esp))=0;
+
       } else
         palloc_free_page (kpage);
     }
 
   /* my implement for argument passing */
-  
-  int i;
-  int argc = 0;
-  /*save all arguments to argv*   */
-  char *argptr;
-  char *token;
-  char *arg_addr;
-  argv[0] = strtok_r((char*)file_name, " ", &argptr);
+  printf("Hello World \n");
+  hex_dump((uintptr_t)*esp, *esp, 0xc0000000-(uintptr_t)*esp, true);
 
-  for(token = (char*)file_name; token != NULL; token = strtok_r(NULL, " ", &argptr))
-  {
-   argv[argc] = token;
-   argc++;
-  }
+  int i;
+  
+  /*save all arguments to argv*   */
+    
+  
 
   /*Write the argument in reverse order */
-  for (i = argc;i >=0; i--)
-  {
-	  *esp -= sizeof(char *);
-	  memcpy(*esp, argv[i], strlen(argv[i])+1);
-	  
-  }
+  
 
   /*word-alignment  */
 
-  int align = *esp % 4;
-  *esp -=align;
-  memset (*esp, 0, align);
-  return success;
+  
+  
 
   /*writing each arguments address   */
-  for (i =argc;i >=0; i--)
-  {
-	  *esp -=4;
-	  arg_addr = argv[i];
-	  memcpy (*esp, arg_addr, 4);
-
-  }
-
   
+
+  return success;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
